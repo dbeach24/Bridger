@@ -16,13 +16,22 @@ def main():
     )
     sc = SparkContext(conf=conf)
 
+    P = 50
     N = 40000
     D = 20
 
-    indices = sc.parallelize(range(N))
-    features = indices.map(
-        lambda id: bigkdf.FeatureData(id, np.random.uniform(0.0, 1.0, D))
-    ).persist(StorageLevel.MEMORY_ONLY_SER)
+    # distributed build of random data by generating "P" random seeds
+    # on the master and distributing these seeds to the workers
+    seeds = sc.parallelize([(i, np.random.randint(0,1000000)) for i in range(P)])
+    n = N // P
+    def build_features(data):
+        batch, seed = data
+        np.random.seed(seed)
+        for j in range(n):
+            yield bigkdf.FeatureData(batch*n+j, np.random.uniform(0.0, 1.0, D))
+
+    features = seeds.flatMap(build_features)
+    features = features.persist(StorageLevel.MEMORY_ONLY_SER)
 
     print(f"Number of items = {features.count()}")
 
@@ -46,7 +55,16 @@ def main():
     print("---------------------------")
     print("Generated Subtrees:")
 
-    subtrees.map(lambda item: print(item[0], item[1][1])).count()
+    subtrees.map(lambda item: print(item[0], item[1])).count()
+
+
+    graph = bigkdf.build_knn_graph(subtrees, k=10)
+
+    print("---------------------------")
+    print("KNN Graph:")
+
+    graph.map(print).count()
+
 
 
 if __name__ == "__main__":

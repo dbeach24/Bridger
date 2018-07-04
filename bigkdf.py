@@ -103,24 +103,49 @@ def build_subtrees(mapped_features, params):
         mat1.X.extend(mat2.X)
         return mat1
 
-    def buildtree(mat):
-        tree = kdt.KDTBuilder(
+    def build_subtree(mat):
+        subtree = kdt.KDTBuilder(
             np.asarray(mat.X),
             np.asarray(mat.ids),
             maxleaf=params.maxnode,
         ).build_tree()
-        return mat, tree
+        return subtree
 
     subtrees = mapped_features.combineByKey(
         create_combiner,
         merge_value,
         merge_combiners
-    ).mapValues(buildtree)
+    ).mapValues(build_subtree)
 
     return subtrees
 
 
+def build_knn_graph(subtrees, k):
 
+    def get_knn(item):
+        key, subtree = item
+        ids = subtree.ids
+        X = subtree.X
+        for i, neighbors in subtree.generate_knn(k):
+            nmap = [(ids[x], d) for x, d in neighbors]
+            yield (ids[i], nmap)
 
+    # this KNN graph contains nearest neighbors found in each tree,
+    # but has redundant entries from the different trees in the forest
+    knn1 = subtrees.flatMap(get_knn)
+
+    def combine_knn(neighbors1, neighbors2):
+        all_neighbors = neighbors1 + neighbors2
+        uniq_ids = set(i for (i, d) in all_neighbors)
+        all_neighbors = [(i,d) for (i,d) in all_neighbors if i in uniq_ids]
+        all_neighbors.sort(key=lambda x: x[1])
+        del all_neighbors[k:]
+        return all_neighbors
+
+    # combine the neighborhood lists across different trees to produce
+    # a unique list of best identified neighbors for each feature
+    knn = knn1.reduceByKey(combine_knn)
+
+    return knn
 
 

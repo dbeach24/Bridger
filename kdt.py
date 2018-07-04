@@ -103,7 +103,7 @@ class KDTBuilder:
         N = len(indices)
         if N <= self._maxleaf:
             if self._add_contents:
-                contents = list(self._ids[indices])
+                contents = list(indices)
             else:
                 contents = None
             return KDNode(nodeid, None, None, None, None, contents)
@@ -166,6 +166,10 @@ class KDTree:
         return node
 
     def generate_knn(self, k):
+        """
+        Returns KNNState results.
+        Note that the IDs used are indexes into the ids array.
+        """
 
         X = self._X
 
@@ -183,14 +187,17 @@ class KDTree:
                 return
 
             items = node.contents
+            knn = KNNState(k)
             for i, j in itertools.combinations(items, 2):
                 d2 = dist2(i, j)
-                yield (i, j, d2)
+                if d2 < 1e-10:
+                    print(i, j, X[i,:], X[j,:], d2)
+                    assert False
+                knn.add_neighbor(i, j, d2)
 
-        knn = KNNState(k)
-        for (i, j, d2) in leafpairwiseknn(self.root):
-            knn.add_neighbor(i, j, d2)
-        return knn.graph
+            yield from knn.graph.items()
+
+        yield from leafpairwiseknn(self.root)
 
 
 class KNNState:
@@ -211,11 +218,14 @@ class KNNState:
 
         k = self._k
 
-        def knnadd(neighbors, idx, dist):
+        def knnadd(neighbors, idx):
+            if len(neighbors) >= k and dist > neighbors[k-1][1]:
+                return
             neighbors.append((idx, dist))
             neighbors.sort(key=lambda x: x[1])
             del neighbors[k:]
 
-        knnadd(self._graph[i], j, dist)
-        knnadd(self._graph[j], i, dist)
+        graph = self._graph
+        knnadd(graph[i], j)
+        knnadd(graph[j], i)
 
