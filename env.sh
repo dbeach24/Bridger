@@ -1,0 +1,6 @@
+
+PYTHON3=`which python3`
+
+export PYSPARK_PYTHON=$PYTHON3
+export PYSPARK_DRIVER_PYTHON=$PYTHON3
+

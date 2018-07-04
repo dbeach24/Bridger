@@ -15,11 +15,6 @@ KDFParams = namedtuple("KDFParams", [
     "samplefactor", #< number of samples per partition when building part tree
 ])
 
-DocumentData = namedtuple("DocumentData", [
-    "id",           #< (int) unique identifier
-    "rawdata",      #< (bytes) document data
-])
-
 FeatureData = namedtuple("FeatureData", [
     "id",           #< (int) unique identifier
     "x",            #< ndarray[float, 1-D] feature vector
@@ -29,48 +24,6 @@ FeatureMatrix = namedtuple("FeatureMatrix", [
     "ids",          #< array of unique identifiers
     "X",            #< ndarray[float, (NxD)] feature vectors
 ])
-
-
-def compute_all_features(docs):
-    """
-    Compute all feature vectors.
-    This uses the compute_feature to compute feature vectors
-    for all documents in parallel.
-
-    - docs: RDD[DocumentData]
-    - returns: RDD[FeatureData]
-    """
-    return rawdocs.map(compute_feature)
-
-
-def compute_feature(doc):
-    """
-    Function to transform a single document into a feature vector.
-
-    This function is evaluated in parallel across worker processes,
-    and is called for each document in the collection.
-
-    Note that the scale of the feature dimensions must be normalized/adjusted.
-    The tree splitting algorithm and distance function will prioritize the
-    higher variance columns.
-
-    The implementation of this function depends greatly on the
-    nature of source documents.
-
-    - doc: DocumentData input document
-    - returns: ndarray[float, 1D] feature vector
-    """
-    raise NotImplementedError("implement depending on source data")
-
-
-def build_partition_tree(X, params):
-    # build the partition tree
-    part_tree = kdt.KDTBuilder(X,
-        maxleaf=params.samplefactor,
-        add_contents=False
-    ).build_tree()
-
-    return part_tree
 
 
 def build_partition_trees(features, params):
@@ -95,8 +48,15 @@ def build_partition_trees(features, params):
     # build the sample data matrix
     X = np.vstack(vecs)
 
+    def build_partition_tree():
+        # build the partition tree
+        return kdt.KDTBuilder(X,
+            maxleaf=params.samplefactor,
+            add_contents=False
+        ).build_tree()
+
     numtrees = params.numtrees
-    return [build_partition_tree(X, params) for i in range(numtrees)]
+    return [build_partition_tree() for i in range(numtrees)]
 
 
 def map_to_subtrees(features, part_trees, params):
@@ -147,9 +107,9 @@ def build_subtrees(mapped_features, params):
         tree = kdt.KDTBuilder(
             np.asarray(mat.X),
             np.asarray(mat.ids),
-            maxleaf=params.maxnode
+            maxleaf=params.maxnode,
         ).build_tree()
-        return tree
+        return mat, tree
 
     subtrees = mapped_features.combineByKey(
         create_combiner,
@@ -160,26 +120,7 @@ def build_subtrees(mapped_features, params):
     return subtrees
 
 
-def build_KDForest(feat, params):
-    """
-    Build all KDTrees and encapsulate them in a searchable forest type.
-    """
-    trees = [build_KDTree(feat, params) for i in range(params.numtrees)]
-    return KDForest(trees)
 
 
-def main():
-
-    docs = load_documents()
-    N = docs.count
-    params = KDFParams(
-        N=N,
-        numtrees=4,
-        maxnode=50,
-        avgpart=10000,
-    )
-
-    feat = compute_all_features(docs)
-    forest = build_KDForest(params, feat)
 
 

@@ -1,5 +1,6 @@
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import itertools
+import heapq
 
 import numpy as np
 
@@ -87,7 +88,10 @@ class KDTBuilder:
         N = self._X.shape[0]
         indices = np.arange(N)
         root = self._build_node(indices)
-        return KDTree(root)
+        if not self._add_contents:
+            self._X = None
+            self._ids = None
+        return KDTree(root, self._X, self._ids)
 
     def _build_node(self, indices):
         """
@@ -128,9 +132,11 @@ class KDTBuilder:
 
 class KDTree:
 
-    def __init__(self, root):
+    def __init__(self, root, X, ids):
         assert isinstance(root, KDNode)
         self._root = root
+        self._X = X
+        self._ids = ids
         self._numleaves, self._numitems = get_counts(root)
 
     def __repr__(self):
@@ -140,6 +146,14 @@ class KDTree:
     @property
     def root(self):
         return self._root
+
+    @property
+    def X(self):
+        return self._X
+    
+    @property
+    def ids(self):
+        return self._ids
 
     def find_leaf(self, xi):
         """
@@ -151,4 +165,57 @@ class KDTree:
             node = node.left if goleft else node.right
         return node
 
+    def generate_knn(self, k):
+
+        X = self._X
+
+        def dist2(i, j):
+            d = X[i,:] - X[j,:]
+            return np.dot(d, d)
+
+        def leafpairwiseknn(node):
+            if node.left:
+                yield from leafpairwiseknn(node.left)
+            if node.right:
+                yield from leafpairwiseknn(node.right)
+
+            if not is_leaf(node):
+                return
+
+            items = node.contents
+            for i, j in itertools.combinations(items, 2):
+                d2 = dist2(i, j)
+                yield (i, j, d2)
+
+        knn = KNNState(k)
+        for (i, j, d2) in leafpairwiseknn(self.root):
+            knn.add_neighbor(i, j, d2)
+        return knn.graph
+
+
+class KNNState:
+
+    def __init__(self, k):
+        self._k = k
+        self._graph = defaultdict(list)
+
+    @property
+    def k(self):
+        return self._k
+
+    @property
+    def graph(self):
+        return self._graph
+
+    def add_neighbor(self, i, j, dist):
+
+        k = self._k
+
+        def knnadd(neighbors, idx, dist):
+            neighbors.append((idx, dist))
+            neighbors.sort(key=lambda x: x[1])
+            del neighbors[k:]
+
+        knnadd(self._graph[i], j, dist)
+        knnadd(self._graph[j], i, dist)
 
