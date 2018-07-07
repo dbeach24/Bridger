@@ -27,6 +27,12 @@ FeatureMatrix = namedtuple("FeatureMatrix", [
 
 
 def build_partition_trees(features, params):
+    """
+    Build partition trees locally by taking a sample of the
+    data.  Note that this only builds the "top levels" of each
+    tree.  The lower branches and leaves will be populated later.
+    """
+
     # approximate number of partitions
     nparts = params.N / params.avgpart
 
@@ -60,6 +66,12 @@ def build_partition_trees(features, params):
 
 
 def map_to_subtrees(features, part_trees, params):
+    """
+    Given the list of partitioning trees, determine which feature
+    vectors map to which subtrees.  The partitioning tree structure
+    is distributed to each of the workers so that subtree assignments
+    may occur in parallel.
+    """
 
     # use a broadcast variable to distribute the partition trees
     # to all workers
@@ -87,6 +99,11 @@ def map_to_subtrees(features, part_trees, params):
 
 
 def build_subtrees(mapped_features, params):
+    """
+    With subtree assignments determined for each data point,
+    group the data by subtree, building the subtree structures
+    in parallel across the workers.
+    """
 
     def create_combiner(feat):
         ids = [feat.id]
@@ -121,8 +138,20 @@ def build_subtrees(mapped_features, params):
 
 
 def build_knn_graph(subtrees, k):
+    """
+    Use the built subtrees to create an initial KNN graph.
+    Points which reside in the same leaf node of a subtree
+    are evaluated pairwise as neighbor candidates.  These
+    neighbors are evaluated locally first, keeping the k
+    best neighbors.  Then, neighbor lists are collected and
+    reduced across the various trees to keep the k-best
+    neighbors from each worker.
+
+    The entire KNN graph is returned as an RDD.
+    """
 
     def get_knn(item):
+        """Find KNN lists by comparing points in the same leaf."""
         key, subtree = item
         ids = subtree.ids
         X = subtree.X
@@ -135,6 +164,7 @@ def build_knn_graph(subtrees, k):
     knn1 = subtrees.flatMap(get_knn)
 
     def combine_knn(neighbors1, neighbors2):
+        """Combine different KNN lists for the same point."""
         all_neighbors = neighbors1 + neighbors2
         uniq_ids = set(i for (i, d) in all_neighbors)
         all_neighbors = [(i,d) for (i,d) in all_neighbors if i in uniq_ids]
