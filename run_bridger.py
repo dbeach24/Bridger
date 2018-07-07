@@ -24,16 +24,16 @@ def main():
     # on the master and distributing these seeds to the workers
     seeds = sc.parallelize([(i, np.random.randint(0,1000000)) for i in range(P)])
     n = N // P
-    def build_features(data):
+    def build_points(data):
         batch, seed = data
         np.random.seed(seed)
         for j in range(n):
-            yield bigkdf.FeatureData(batch*n+j, np.random.uniform(0.0, 1.0, D))
+            yield bigkdf.DataPoint(batch*n+j, np.random.uniform(0.0, 1.0, D))
 
-    features = seeds.flatMap(build_features)
-    features = features.persist(StorageLevel.MEMORY_ONLY_SER)
+    points = seeds.flatMap(build_points)
+    points = points.persist(StorageLevel.MEMORY_ONLY_SER)
 
-    print(f"Number of items = {features.count()}")
+    print(f"Number of items = {points.count()}")
 
     params = bigkdf.KDFParams(
         N=N,
@@ -43,14 +43,14 @@ def main():
         samplefactor=10,
     )
 
-    part_trees = bigkdf.build_partition_trees(features, params)
+    part_trees = bigkdf.build_partition_trees(points, params)
 
     print("---------------------------")
     print("Build Partition Trees:")
     print(part_trees)
 
-    mapped_features = bigkdf.map_to_subtrees(features, part_trees, params)
-    subtrees = bigkdf.build_subtrees(mapped_features, params)
+    mapped_points = bigkdf.map_to_subtrees(points, part_trees, params)
+    subtrees = bigkdf.build_subtrees(mapped_points, params)
 
     print("---------------------------")
     print("Generated Subtrees:")

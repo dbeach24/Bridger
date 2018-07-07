@@ -15,18 +15,18 @@ KDFParams = namedtuple("KDFParams", [
     "samplefactor", #< number of samples per partition when building part tree
 ])
 
-FeatureData = namedtuple("FeatureData", [
+DataPoint = namedtuple("DataPoint", [
     "id",           #< (int) unique identifier
-    "x",            #< ndarray[float, 1-D] feature vector
+    "x",            #< ndarray[float, 1-D] data vector
 ])
 
-FeatureMatrix = namedtuple("FeatureMatrix", [
+DataMatrix = namedtuple("DataMatrix", [
     "ids",          #< array of unique identifiers
-    "X",            #< ndarray[float, (NxD)] feature vectors
+    "X",            #< ndarray[float, (NxD)] (N D-dimensional points)
 ])
 
 
-def build_partition_trees(features, params):
+def build_partition_trees(points, params):
     """
     Build partition trees locally by taking a sample of the
     data.  Note that this only builds the "top levels" of each
@@ -48,8 +48,8 @@ def build_partition_trees(features, params):
     # collect sample vectors locally
     # (note that we don't care about their identities, as we're just
     # trying to get a representation of the data distribution)
-    sample = features.takeSample(withReplacement=True, num=nsamples)
-    vecs = [feat.x for feat in sample]
+    sample = points.takeSample(withReplacement=True, num=nsamples)
+    vecs = [point.x for point in sample]
 
     # build the sample data matrix
     X = np.vstack(vecs)
@@ -65,54 +65,54 @@ def build_partition_trees(features, params):
     return [build_partition_tree() for i in range(numtrees)]
 
 
-def map_to_subtrees(features, part_trees, params):
+def map_to_subtrees(points, part_trees, params):
     """
-    Given the list of partitioning trees, determine which feature
-    vectors map to which subtrees.  The partitioning tree structure
-    is distributed to each of the workers so that subtree assignments
+    Given the list of partitioning trees, determine which points
+    map to which subtrees.  The partitioning tree structure is
+    distributed to each of the workers so that subtree assignments
     may occur in parallel.
     """
 
     # use a broadcast variable to distribute the partition trees
     # to all workers
-    sc = features.context
+    sc = points.context
     trees = sc.broadcast(part_trees)
 
-    def subtreemapper(feature):
+    def subtreemapper(point):
         """
-        For each subtree in the forest to be built,
-        determine the tree number and partition number within that tree
-        for the given features vector.
+        For each subtree in the forest to be built, determine the
+        tree number and partition number within that tree for the
+        given point.
 
-        Note that each feature vector maps to exactly one partition
+        Note that each point maps to exactly one partition
         within each tree, so there are N * numtrees results.
         """
-        x = feature.x
+        x = point.x
         for treeid, parttree in enumerate(trees.value):
             subtreeid = parttree.find_leaf(x).id
             key = (treeid, subtreeid)
-            yield (key, feature)
+            yield (key, point)
 
-    mapped_features = features.flatMap(subtreemapper)
+    mapped_points = points.flatMap(subtreemapper)
 
-    return mapped_features
+    return mapped_points
 
 
-def build_subtrees(mapped_features, params):
+def build_subtrees(mapped_points, params):
     """
     With subtree assignments determined for each data point,
     group the data by subtree, building the subtree structures
     in parallel across the workers.
     """
 
-    def create_combiner(feat):
-        ids = [feat.id]
-        X = [feat.x]
-        return FeatureMatrix(ids, X)
+    def create_combiner(point):
+        ids = [point.id]
+        X = [point.x]
+        return DataMatrix(ids, X)
 
-    def merge_value(mat, feat):
-        mat.ids.append(feat.id)
-        mat.X.append(feat.x)
+    def merge_value(mat, point):
+        mat.ids.append(point.id)
+        mat.X.append(point.x)
         return mat
 
     def merge_combiners(mat1, mat2):
@@ -128,7 +128,7 @@ def build_subtrees(mapped_features, params):
         ).build_tree()
         return subtree
 
-    subtrees = mapped_features.combineByKey(
+    subtrees = mapped_points.combineByKey(
         create_combiner,
         merge_value,
         merge_combiners
@@ -173,7 +173,7 @@ def build_knn_graph(subtrees, k):
         return all_neighbors
 
     # combine the neighborhood lists across different trees to produce
-    # a unique list of best identified neighbors for each feature
+    # a unique list of best identified neighbors for each point
     knn = knn1.reduceByKey(combine_knn)
 
     return knn
