@@ -33,15 +33,24 @@ def generate_points(sc, params, P=50):
     on the master and distributing these seeds to the workers
     """
     N, D = params.N, params.D
-    n = N // P  # this is imperfect when N % P != 0
-    seeds = sc.parallelize([(i, np.random.randint(0,1000000)) for i in range(P)])
-    def build_points(data):
-        batch, seed = data
-        np.random.seed(seed)
-        for j in range(n):
-            yield DataPoint(batch*n+j, np.random.uniform(0.0, 1.0, D))
+    n, s = divmod(N, P)
 
-    points = seeds.flatMap(build_points)
+    seeddata = []
+    pos = 0
+    for p in range(P):
+        end = pos + n
+        if p < s: end += 1
+        seed = np.random.randint(0,10000000)
+        seeddata.append((pos, end, seed))
+        pos = end
+
+    def build_points(data):
+        start, end, seed = data
+        np.random.seed(seed)
+        for i in range(start, end):
+            yield DataPoint(i, np.random.uniform(0.0, 1.0, D))
+
+    points = sc.parallelize(seeddata).flatMap(build_points)
     return points
 
 

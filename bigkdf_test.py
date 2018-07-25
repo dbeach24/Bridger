@@ -5,7 +5,7 @@ from pyspark import SparkContext, SparkConf, StorageLevel
 import bigkdf
 
 
-def test_build_forest():
+def make_spark_context():
     conf = (SparkConf()
         .setMaster("local[2]")
         .setAppName("Bridger")
@@ -13,24 +13,41 @@ def test_build_forest():
         .set("spark.driver.memory", "1g")
     )
     sc = SparkContext(conf=conf)
+    return sc
 
-    N = 40000
-    D = 20
 
-    indices = sc.parallelize(range(N))
-    features = indices.map(
-        lambda id: bigkdf.FeatureData(id, np.random.uniform(0.0, 1.0, D))
-    ).persist(StorageLevel.MEMORY_ONLY_SER)
+sc = make_spark_context()
 
-    print(features.count())
 
+def test_generate_points():
     params = bigkdf.KDFParams(
-        N=N,
+        N=361,
+        D=7,
         numtrees=4,
         maxnode=50,
         avgpart=4000,
         samplefactor=10,
     )
+
+    features = bigkdf.generate_points(sc, params, P=10)
+    assert features.count() == params.N
+    assert len(features.top(1)[0].x) == params.D
+
+
+def test_build_forest():
+    params = bigkdf.KDFParams(
+        N=40000,
+        D=20,
+        numtrees=4,
+        maxnode=50,
+        avgpart=4000,
+        samplefactor=10,
+    )
+
+    features = bigkdf.generate_points(sc, params, P=10)
+    features = features.persist(StorageLevel.MEMORY_ONLY_SER)
+
+    print(features.count())
 
     part_trees = bigkdf.build_partition_trees(features, params)
     print(part_trees)
