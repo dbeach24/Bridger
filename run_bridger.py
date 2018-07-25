@@ -16,32 +16,19 @@ def main():
     )
     sc = SparkContext(conf=conf)
 
-    P = 50
-    N = 40000
-    D = 20
+    params = bigkdf.KDFParams(
+        N=70000,
+        D=784,
+        numtrees=4,
+        maxnode=50,
+        avgpart=3500,
+        samplefactor=10,
+    )
 
-    # distributed build of random data by generating "P" random seeds
-    # on the master and distributing these seeds to the workers
-    seeds = sc.parallelize([(i, np.random.randint(0,1000000)) for i in range(P)])
-    n = N // P
-    def build_points(data):
-        batch, seed = data
-        np.random.seed(seed)
-        for j in range(n):
-            yield bigkdf.DataPoint(batch*n+j, np.random.uniform(0.0, 1.0, D))
-
-    points = seeds.flatMap(build_points)
+    points = bigkdf.generate_points(sc, params, P=50)
     points = points.persist(StorageLevel.MEMORY_ONLY_SER)
 
     print(f"Number of items = {points.count()}")
-
-    params = bigkdf.KDFParams(
-        N=N,
-        numtrees=4,
-        maxnode=50,
-        avgpart=5000,
-        samplefactor=10,
-    )
 
     part_trees = bigkdf.build_partition_trees(points, params)
 
@@ -57,13 +44,13 @@ def main():
 
     subtrees.map(lambda item: print(item[0], item[1])).count()
 
-
     graph = bigkdf.build_knn_graph(subtrees, k=10)
 
     print("---------------------------")
     print("KNN Graph:")
 
-    graph.map(print).count()
+    #graph.map(print).count()
+    print(graph.count())
 
 
 

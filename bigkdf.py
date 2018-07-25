@@ -9,6 +9,7 @@ import kdt
 
 KDFParams = namedtuple("KDFParams", [
     "N",            #< num documents in collection (may be approx)
+    "D",            #< num dimensions in data
     "numtrees",     #< num trees in forest
     "maxnode",      #< max items per leaf node
     "avgpart",      #< avg items per partition
@@ -24,6 +25,24 @@ DataMatrix = namedtuple("DataMatrix", [
     "ids",          #< array of unique identifiers
     "X",            #< ndarray[float, (NxD)] (N D-dimensional points)
 ])
+
+
+def generate_points(sc, params, P=50):
+    """
+    Distributed build of random data by generating "P" random seeds
+    on the master and distributing these seeds to the workers
+    """
+    N, D = params.N, params.D
+    n = N // P  # this is imperfect when N % P != 0
+    seeds = sc.parallelize([(i, np.random.randint(0,1000000)) for i in range(P)])
+    def build_points(data):
+        batch, seed = data
+        np.random.seed(seed)
+        for j in range(n):
+            yield DataPoint(batch*n+j, np.random.uniform(0.0, 1.0, D))
+
+    points = seeds.flatMap(build_points)
+    return points
 
 
 def build_partition_trees(points, params):
