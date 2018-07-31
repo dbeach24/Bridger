@@ -102,10 +102,7 @@ class KDTBuilder:
 
         N = len(indices)
         if N <= self._maxleaf:
-            if self._add_contents:
-                contents = list(indices)
-            else:
-                contents = None
+            contents = list(indices) if self._add_contents else None
             return KDNode(nodeid, None, None, None, None, contents)
 
         if N > 100:
