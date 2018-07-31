@@ -43,6 +43,7 @@ def generate_points(sc, params, P=50):
         seed = np.random.randint(0,10000000)
         seeddata.append((pos, end, seed))
         pos = end
+    assert pos == N, "counting error while distributing data"
 
     def build_points(data):
         start, end, seed = data
