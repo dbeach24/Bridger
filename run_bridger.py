@@ -9,7 +9,7 @@ import bigkdf
 
 def main():
     conf = (SparkConf()
-        .setMaster("local[4]")
+        .setMaster("local[6]")
         .setAppName("Bridger")
         .set("spark.executor.memory", "2g")
         .set("spark.driver.memory", "4g")
@@ -22,36 +22,22 @@ def main():
         numtrees=4,
         maxnode=50,
         avgpart=3500,
-        samplefactor=10,
+        samplefactor=50,
     )
 
+    # params = bigkdf.KDFParams(
+    #     N=1000000,
+    #     D=50,
+    #     numtrees=2,
+    #     maxnode=50,
+    #     avgpart=10000,
+    #     samplefactor=50,
+    # )
+
     points = bigkdf.generate_points(sc, params, P=50)
-    points = points.persist(StorageLevel.MEMORY_ONLY_SER)
+    #points = points.persist(StorageLevel.MEMORY_ONLY_SER)
 
-    print(f"Number of items = {points.count()}")
-
-    part_trees = bigkdf.build_partition_trees(points, params)
-
-    print("---------------------------")
-    print("Build Partition Trees:")
-    print(part_trees)
-
-    mapped_points = bigkdf.map_to_subtrees(points, part_trees, params)
-    subtrees = bigkdf.build_subtrees(mapped_points, params)
-
-    print("---------------------------")
-    print("Generated Subtrees:")
-
-    subtrees.map(lambda item: print(item[0], item[1])).count()
-
-    graph = bigkdf.build_knn_graph(subtrees, k=10)
-
-    print("---------------------------")
-    print("KNN Graph:")
-
-    #graph.map(print).count()
-    print(graph.count())
-
+    graph = bigkdf.run_knn_process(points, params)
 
 
 if __name__ == "__main__":

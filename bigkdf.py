@@ -208,3 +208,36 @@ def build_knn_graph(subtrees, k):
     return knn
 
 
+
+def run_knn_process(points, params):
+
+    print(f"Number of items = {points.count()}")
+
+    part_trees = build_partition_trees(points, params)
+
+    print("---------------------------")
+    print("Build Partition Trees:")
+    print(part_trees)
+
+    mapped_points = map_to_subtrees(points, part_trees, params)
+    subtrees = build_subtrees(mapped_points, params)
+
+    print("---------------------------")
+    print("Generated Subtrees:")
+
+    subtrees.map(lambda item: print(item[0], item[1])).count()
+
+    graph = build_knn_graph(subtrees, k=10)
+
+    print("---------------------------")
+    print("KNN Graph:")
+
+    #graph.map(print).count()
+    print(graph.count())
+
+    return graph
+
+
+
+
+
